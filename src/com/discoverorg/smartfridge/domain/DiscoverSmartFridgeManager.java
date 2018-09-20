@@ -2,13 +2,19 @@ package com.discoverorg.smartfridge.domain;
 
 import com.discoverorg.smartfridge.exception.FridgeFullException;
 import com.discoverorg.smartfridge.exception.ItemNotFoundException;
+import com.discoverorg.smartfridge.exception.ItemTypeNotFoundException;
+import com.discoverorg.smartfridge.exception.NullItemException;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+/**
+ *  SmartFridgeManager implementation, as a builder class for fluent object creation
+ */
 public class DiscoverSmartFridgeManager implements SmartFridgeManager {
     private List<DiscoverSmartFridgeContainer> containers = Arrays.asList(
             new DiscoverSmartFridgeContainer("CONTAINER_1"),
@@ -21,14 +27,14 @@ public class DiscoverSmartFridgeManager implements SmartFridgeManager {
     public DiscoverSmartFridgeManager() {
     }
 
-    public void addMaxFill(ItemType itemType, Double maxWeightInPounds) {
+    public DiscoverSmartFridgeManager addMaxFill(ItemType itemType, Double maxWeightInPounds) {
         fillTargets.put(itemType.getTypeId(), maxWeightInPounds);
+        return this;
     }
 
-    public void addItem(DiscoverSmartFridgeItem fridgeItem) throws FridgeFullException {
+    public DiscoverSmartFridgeManager addItem(DiscoverSmartFridgeItem fridgeItem) throws FridgeFullException, NullItemException {
         if (fridgeItem == null) {
-            // TODO: could wrap in Optional
-            return;
+            throw new NullItemException();
         }
 
         UUID itemUUID = fridgeItem.getItemUUID();
@@ -42,15 +48,19 @@ public class DiscoverSmartFridgeManager implements SmartFridgeManager {
         container.addItem(fridgeItem);
         Double fillFactor = getFillFactor(itemType);
         handleItemAdded(itemType, itemUUID.toString(), name, fillFactor);
+
+        return this;
     }
 
-    public void removeItem(UUID itemUUID) throws ItemNotFoundException {
+    public DiscoverSmartFridgeManager removeItem(UUID itemUUID) throws ItemNotFoundException {
         DiscoverSmartFridgeContainer container = containers.stream()
                 .filter(aContaier -> aContaier.exists(itemUUID))
                 .findFirst()
                 .orElseThrow(ItemNotFoundException::new);
         container.removeItem(itemUUID);
         handleItemRemoved(itemUUID.toString());
+
+        return this;
     }
 
     public boolean spaceAvailable() {
@@ -61,6 +71,15 @@ public class DiscoverSmartFridgeManager implements SmartFridgeManager {
         return containers;
     }
 
+    public void printItems(Double fillFactorCriteria) {
+        System.out.println("\n** Listing items with fill factor less than or equal to " + fillFactorCriteria + " **");
+        for (Object items : getItems(fillFactorCriteria)) {
+            Long itemType = (Long)((Object[]) items)[0];
+            Double fillFactor = (Double)((Object[]) items)[1];
+            System.out.println("itemType: " + itemType + ", fillFactor: " + fillFactor);
+        }
+        System.out.println();
+    }
 
     @Override
     public void handleItemRemoved(String itemUUID) {
@@ -100,5 +119,17 @@ public class DiscoverSmartFridgeManager implements SmartFridgeManager {
     @Override
     public void forgetItem(long itemType) {
         fillTargets.remove(itemType);
+        ItemType type = ItemType.APPLE; // Needs an initial value for compiler to be happy in last System.out.println()
+        try {
+            type = Stream.of(ItemType.values())
+                    .filter(item -> item.getTypeId() == itemType)
+                    .findFirst()
+                    .orElseThrow(ItemTypeNotFoundException::new);
+        }
+        catch (ItemNotFoundException e) {
+            System.out.println("[ ERROR: ITEM TYPE NOT FOUND ]: Type " + itemType + " does not exist");
+        }
+
+        System.out.println("Forgetting item: " + type + ", itemType: " + type.getTypeId());
     }
 }
